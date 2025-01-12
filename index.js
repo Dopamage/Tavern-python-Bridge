@@ -1,9 +1,14 @@
 // Python Bridge Extension for SillyTavern
-import { getContext, extension_settings, saveSettingsDebounced, eventSource } from '../../../script.js';
+import { getContext } from '../../../script.js';
+import { extension_settings } from '../../../script.js';
+import { saveSettingsDebounced } from '../../../script.js';
+import { registerSlashCommand } from '../../../slash-commands.js';
+import { eventSource } from '../../../script.js';
 
 // Default settings
-extension_settings.python_bridge = {
-    port: 5001
+extension_settings.python_bridge = extension_settings.python_bridge || {
+    enabled: false,
+    port: 5001,
 };
 
 let ws = null;
@@ -35,7 +40,9 @@ async function connectWebSocket() {
 
         ws.onclose = () => {
             console.log('[Python Bridge] Disconnected from Python server');
-            setTimeout(connectWebSocket, 5000);
+            if (extension_settings.python_bridge.enabled) {
+                setTimeout(connectWebSocket, 5000);
+            }
         };
 
         ws.onerror = (error) => {
@@ -43,7 +50,9 @@ async function connectWebSocket() {
         };
     } catch (error) {
         console.error('[Python Bridge] Failed to connect:', error);
-        setTimeout(connectWebSocket, 5000);
+        if (extension_settings.python_bridge.enabled) {
+            setTimeout(connectWebSocket, 5000);
+        }
     }
 }
 
@@ -57,8 +66,26 @@ eventSource.on('message_received', (messageData) => {
     }
 });
 
-// Initialize connection
+// Register slash command
+registerSlashCommand('python-bridge', (args) => {
+    const enabled = args.length > 0 ? args[0].toLowerCase() === 'on' : !extension_settings.python_bridge.enabled;
+    extension_settings.python_bridge.enabled = enabled;
+    saveSettingsDebounced();
+    
+    if (enabled) {
+        connectWebSocket();
+        return 'Python Bridge enabled';
+    } else {
+        if (ws) {
+            ws.close();
+        }
+        return 'Python Bridge disabled';
+    }
+}, [], 'Toggle Python Bridge extension', true, true);
+
+// Initialize
 jQuery(() => {
-    console.log('[Python Bridge] Extension loaded');
-    connectWebSocket();
+    if (extension_settings.python_bridge.enabled) {
+        connectWebSocket();
+    }
 }); 
