@@ -1,59 +1,53 @@
-// Python Bridge Extension for SillyTavern
-import { getContext } from '../../../script.js';
-import { extension_settings } from '../../../script.js';
-import { saveSettingsDebounced } from '../../../script.js';
+import { getContext } from '../../../extensions.js';
+import { extension_settings } from '../../../extensions.js';
+import { saveSettingsDebounced } from '../../../extensions.js';
 import { registerSlashCommand } from '../../../slash-commands.js';
-import { eventSource } from '../../../script.js';
+import { eventSource } from '../../../extensions.js';
 
 // Default settings
-extension_settings.python_bridge = extension_settings.python_bridge || {
-    enabled: false,
+const defaultSettings = {
+    enabled: true,
     port: 5001,
 };
 
-let ws = null;
+// Extension settings
+extension_settings.python_bridge = extension_settings.python_bridge || {};
+Object.assign(extension_settings.python_bridge, defaultSettings);
 
-async function connectWebSocket() {
-    if (ws) {
-        ws.close();
+let ws = null;
+let wsServer = null;
+
+async function setupWebSocket() {
+    if (wsServer) {
+        wsServer.close();
     }
 
-    try {
-        ws = new WebSocket(`ws://localhost:${extension_settings.python_bridge.port}`);
-        console.log(`[Python Bridge] Connecting to WebSocket server on port ${extension_settings.python_bridge.port}`);
+    // Create WebSocket server
+    wsServer = new WebSocket.Server({ port: extension_settings.python_bridge.port });
+    console.log(`[Python Bridge] WebSocket server started on port ${extension_settings.python_bridge.port}`);
 
-        ws.onopen = () => {
-            console.log('[Python Bridge] Connected to Python server');
-        };
+    wsServer.on('connection', (socket) => {
+        console.log('[Python Bridge] Client connected');
+        ws = socket;
 
-        ws.onmessage = async (event) => {
+        socket.on('message', async (message) => {
             try {
-                const data = JSON.parse(event.data);
+                const data = JSON.parse(message);
                 if (data.type === 'send_message') {
+                    // Insert message into chat
                     const context = getContext();
                     await context.sendMessage(data.content);
                 }
             } catch (error) {
                 console.error('[Python Bridge] Error processing message:', error);
             }
-        };
+        });
 
-        ws.onclose = () => {
-            console.log('[Python Bridge] Disconnected from Python server');
-            if (extension_settings.python_bridge.enabled) {
-                setTimeout(connectWebSocket, 5000);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error('[Python Bridge] WebSocket error:', error);
-        };
-    } catch (error) {
-        console.error('[Python Bridge] Failed to connect:', error);
-        if (extension_settings.python_bridge.enabled) {
-            setTimeout(connectWebSocket, 5000);
-        }
-    }
+        socket.on('close', () => {
+            console.log('[Python Bridge] Client disconnected');
+            ws = null;
+        });
+    });
 }
 
 // Listen for bot responses
@@ -66,26 +60,25 @@ eventSource.on('message_received', (messageData) => {
     }
 });
 
-// Register slash command
+// Register slash command to toggle extension
 registerSlashCommand('python-bridge', (args) => {
     const enabled = args.length > 0 ? args[0].toLowerCase() === 'on' : !extension_settings.python_bridge.enabled;
     extension_settings.python_bridge.enabled = enabled;
     saveSettingsDebounced();
     
     if (enabled) {
-        connectWebSocket();
+        setupWebSocket();
         return 'Python Bridge enabled';
     } else {
-        if (ws) {
-            ws.close();
+        if (wsServer) {
+            wsServer.close();
+            wsServer = null;
         }
         return 'Python Bridge disabled';
     }
 }, [], 'Toggle Python Bridge extension', true, true);
 
-// Initialize
-jQuery(() => {
-    if (extension_settings.python_bridge.enabled) {
-        connectWebSocket();
-    }
-}); 
+// Initialize WebSocket server if enabled
+if (extension_settings.python_bridge.enabled) {
+    setupWebSocket();
+} 
