@@ -1,9 +1,6 @@
 // Python Bridge Extension for SillyTavern
-import { getContext, extension_settings, saveSettingsDebounced } from '../../../../script.js';
-import { registerSlashCommand } from '../../../slash-commands.js';
-import { eventSource } from '../../../../script.js';
-import { getApiUrl, extension_prompt_types, ModuleWorkerWrapper } from "../../../../extensions.js";
-import { executeSlashCommands } from '../../../../slash-commands.js';
+import { getContext, extension_settings, saveSettingsDebounced, eventSource, getApiUrl, extension_prompt_types, ModuleWorkerWrapper } from '../../../script.js';
+import { registerSlashCommand, executeSlashCommands } from '../../../slash-commands.js';
 
 // Extension initialization
 jQuery(async () => {
@@ -146,32 +143,28 @@ jQuery(async () => {
     });
 
     // Register slash command
-    executeSlashCommands.push({
-        name: 'python-bridge',
-        description: 'Toggle Python Bridge extension (on/off)',
-        execute: async (args) => {
-            try {
-                const enabled = args.length > 0 ? args[0].toLowerCase() === 'on' : !extension_settings.python_bridge.enabled;
-                extension_settings.python_bridge.enabled = enabled;
-                $('#python_bridge_enabled').prop('checked', enabled);
-                saveSettingsDebounced();
-                
-                if (enabled) {
-                    await connectWebSocket();
-                    return 'Python Bridge enabled - Connecting to Python server...';
-                } else {
-                    if (ws) {
-                        ws.close();
-                        ws = null;
-                    }
-                    return 'Python Bridge disabled';
+    registerSlashCommand('python-bridge', async (args) => {
+        try {
+            const enabled = args.length > 0 ? args[0].toLowerCase() === 'on' : !extension_settings.python_bridge.enabled;
+            extension_settings.python_bridge.enabled = enabled;
+            $('#python_bridge_enabled').prop('checked', enabled);
+            saveSettingsDebounced();
+            
+            if (enabled) {
+                await connectWebSocket();
+                return 'Python Bridge enabled - Connecting to Python server...';
+            } else {
+                if (ws) {
+                    ws.close();
+                    ws = null;
                 }
-            } catch (error) {
-                console.error('[Python Bridge] Command error:', error);
-                return 'Error executing command. Check console for details.';
+                return 'Python Bridge disabled';
             }
+        } catch (error) {
+            console.error('[Python Bridge] Command error:', error);
+            return 'Error executing command. Check console for details.';
         }
-    });
+    }, [], 'Toggle Python Bridge extension', true, true);
 
     // Add the UI elements
     addExtensionControls();

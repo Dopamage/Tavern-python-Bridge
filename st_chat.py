@@ -1,8 +1,45 @@
+import sys
+import subprocess
+import os
+import importlib.util
+
+def install_package(package_name):
+    print(f"Installing {package_name}...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+        print(f"Successfully installed {package_name}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error installing {package_name}: {e}")
+        return False
+
+def check_and_install_packages():
+    print("Checking required packages...")
+    
+    # List of required packages with their import names
+    required_packages = {
+        'websockets': 'websockets',  # package name : import name
+    }
+    
+    # Check and install missing packages
+    for package, import_name in required_packages.items():
+        if importlib.util.find_spec(import_name) is None:
+            print(f"Package {package} is missing. Installing...")
+            if not install_package(package):
+                print(f"Failed to install {package}. Please install it manually using:")
+                print(f"pip install {package}")
+                sys.exit(1)
+    
+    print("All required packages are installed!")
+
+# Run package check before imports
+if __name__ == "__main__":
+    check_and_install_packages()
+
+# Now import the required packages
 import asyncio
 import websockets
 import json
-import sys
-import os
 from typing import Callable, Dict, List, Optional, Any
 
 class SillyTavernBridge:
