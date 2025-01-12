@@ -1,8 +1,6 @@
-import { getContext } from '../extensions.js';
-import { extension_settings } from '../extensions.js';
-import { saveSettingsDebounced } from '../extensions.js';
-import { registerSlashCommand } from '../slash-commands.js';
-import { eventSource } from '../extensions.js';
+import { extension_settings, getContext, saveSettingsDebounced } from '../../../extensions.js';
+import { registerSlashCommand } from '../../../slash-commands.js';
+import { eventSource } from '../../../extensions.js';
 
 // Default settings
 const defaultSettings = {
@@ -22,32 +20,36 @@ async function setupWebSocket() {
         wsServer.close();
     }
 
-    // Create WebSocket server
-    wsServer = new WebSocket.Server({ port: extension_settings.python_bridge.port });
-    console.log(`[Python Bridge] WebSocket server started on port ${extension_settings.python_bridge.port}`);
+    try {
+        // Create WebSocket server
+        wsServer = new WebSocket.Server({ port: extension_settings.python_bridge.port });
+        console.log(`[Python Bridge] WebSocket server started on port ${extension_settings.python_bridge.port}`);
 
-    wsServer.on('connection', (socket) => {
-        console.log('[Python Bridge] Client connected');
-        ws = socket;
+        wsServer.on('connection', (socket) => {
+            console.log('[Python Bridge] Client connected');
+            ws = socket;
 
-        socket.on('message', async (message) => {
-            try {
-                const data = JSON.parse(message);
-                if (data.type === 'send_message') {
-                    // Insert message into chat
-                    const context = getContext();
-                    await context.sendMessage(data.content);
+            socket.on('message', async (message) => {
+                try {
+                    const data = JSON.parse(message);
+                    if (data.type === 'send_message') {
+                        // Insert message into chat
+                        const context = getContext();
+                        await context.sendMessage(data.content);
+                    }
+                } catch (error) {
+                    console.error('[Python Bridge] Error processing message:', error);
                 }
-            } catch (error) {
-                console.error('[Python Bridge] Error processing message:', error);
-            }
-        });
+            });
 
-        socket.on('close', () => {
-            console.log('[Python Bridge] Client disconnected');
-            ws = null;
+            socket.on('close', () => {
+                console.log('[Python Bridge] Client disconnected');
+                ws = null;
+            });
         });
-    });
+    } catch (error) {
+        console.error('[Python Bridge] Failed to start WebSocket server:', error);
+    }
 }
 
 // Listen for bot responses
@@ -79,6 +81,8 @@ registerSlashCommand('python-bridge', (args) => {
 }, [], 'Toggle Python Bridge extension', true, true);
 
 // Initialize WebSocket server if enabled
-if (extension_settings.python_bridge.enabled) {
-    setupWebSocket();
-} 
+jQuery(async () => {
+    if (extension_settings.python_bridge.enabled) {
+        await setupWebSocket();
+    }
+}); 
