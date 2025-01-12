@@ -1,7 +1,6 @@
 import { getContext } from '../../../extensions.js';
 import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../extensions.js';
-import { registerSlashCommand } from '../../../slash-commands.js';
 import { eventSource } from '../../../extensions.js';
 
 // Default settings
@@ -29,6 +28,7 @@ async function setupWebSocket() {
     wsServer.on('connection', (socket) => {
         console.log('[Python Bridge] Client connected');
         ws = socket;
+        $('#python_bridge_status').text('Connected').css('color', 'green');
 
         socket.on('message', async (message) => {
             try {
@@ -46,6 +46,7 @@ async function setupWebSocket() {
         socket.on('close', () => {
             console.log('[Python Bridge] Client disconnected');
             ws = null;
+            $('#python_bridge_status').text('Disconnected').css('color', 'red');
         });
     });
 }
@@ -60,25 +61,46 @@ eventSource.on('message_received', (messageData) => {
     }
 });
 
-// Register slash command to toggle extension
-registerSlashCommand('python-bridge', (args) => {
-    const enabled = args.length > 0 ? args[0].toLowerCase() === 'on' : !extension_settings.python_bridge.enabled;
-    extension_settings.python_bridge.enabled = enabled;
-    saveSettingsDebounced();
-    
-    if (enabled) {
-        setupWebSocket();
-        return 'Python Bridge enabled';
-    } else {
-        if (wsServer) {
-            wsServer.close();
-            wsServer = null;
-        }
-        return 'Python Bridge disabled';
-    }
-}, [], 'Toggle Python Bridge extension', true, true);
+// Add UI elements
+jQuery(async () => {
+    const settingsHtml = `
+        <div class="python_bridge_block">
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Python Bridge</b>
+                </div>
+                <div class="inline-drawer-content">
+                    <label class="checkbox_label">
+                        <input type="checkbox" id="python_bridge_enabled" ${extension_settings.python_bridge.enabled ? 'checked' : ''}>
+                        Enable Python Bridge
+                    </label>
+                    <div>Status: <span id="python_bridge_status">Disconnected</span></div>
+                </div>
+            </div>
+        </div>`;
 
-// Initialize WebSocket server if enabled
-if (extension_settings.python_bridge.enabled) {
-    setupWebSocket();
-} 
+    $('#extensions_settings2').append(settingsHtml);
+
+    // Event handler for toggle
+    $('#python_bridge_enabled').on('change', function() {
+        extension_settings.python_bridge.enabled = $(this).prop('checked');
+        saveSettingsDebounced();
+        
+        if (extension_settings.python_bridge.enabled) {
+            setupWebSocket();
+        } else {
+            if (wsServer) {
+                wsServer.close();
+                wsServer = null;
+            }
+            $('#python_bridge_status').text('Disabled').css('color', 'gray');
+        }
+    });
+
+    // Initialize WebSocket server if enabled
+    if (extension_settings.python_bridge.enabled) {
+        setupWebSocket();
+    } else {
+        $('#python_bridge_status').text('Disabled').css('color', 'gray');
+    }
+}); 
