@@ -11,9 +11,5 @@
     "extension_api_version": 1,
     "optional": true,
     "allow_hot_reload": true,
-    "description": "Enables bidirectional communication between Python programs and SillyTavern chat",
-    "settings": {
-        "enabled": false,
-        "port": 5001
-    }
+    "description": "Enables bidirectional communication between Python programs and SillyTavern chat"
 } 
