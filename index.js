@@ -1,10 +1,9 @@
 // Python Bridge Extension for SillyTavern
-import { getContext, extension_settings, saveSettingsDebounced } from '../../../script.js';
+import { getContext, extension_settings, saveSettingsDebounced, eventSource } from '../../../script.js';
 
-// Extend the extension settings
+// Default settings
 extension_settings.python_bridge = {
-    port: 5001,
-    enabled: true,
+    port: 5001
 };
 
 let ws = null;
@@ -48,33 +47,18 @@ async function connectWebSocket() {
     }
 }
 
-// Handle bot responses
-jQuery(document).ready(function() {
-    const messageHandler = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            const nodes = mutation.addedNodes;
-            nodes.forEach(function(node) {
-                if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('mes')) {
-                    if (node.classList.contains('bot')) {
-                        const messageText = node.querySelector('.mes_text').innerText;
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                type: 'bot_response',
-                                content: messageText
-                            }));
-                        }
-                    }
-                }
-            });
-        });
-    });
-
-    // Start observing chat messages
-    const chat = document.getElementById('chat');
-    if (chat) {
-        messageHandler.observe(chat, { childList: true, subtree: true });
+// Listen for bot responses
+eventSource.on('message_received', (messageData) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'bot_response',
+            content: messageData.message
+        }));
     }
+});
 
-    // Start WebSocket connection
+// Initialize connection
+jQuery(() => {
+    console.log('[Python Bridge] Extension loaded');
     connectWebSocket();
 }); 
