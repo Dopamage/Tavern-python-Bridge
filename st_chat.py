@@ -1,8 +1,9 @@
 import sys
 import subprocess
-import asyncio
-import json
-import websockets
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import threading
+import time
 
 def install_package(package_name):
     print(f"Installing {package_name}...")
@@ -16,11 +17,11 @@ def install_package(package_name):
 
 def check_and_install_packages():
     print("Checking required packages...")
-    required_packages = ['websockets']
+    required_packages = ['flask', 'flask-cors']
     
     for package in required_packages:
         try:
-            __import__(package)
+            __import__(package.replace('-', '_'))
         except ImportError:
             if not install_package(package):
                 print(f"Failed to install {package}. Please install it manually using:")
@@ -29,83 +30,60 @@ def check_and_install_packages():
     
     print("All required packages are installed!")
 
-class SillyTavernChat:
-    def __init__(self, port=5001):
-        self.port = port
-        self.websocket = None
-        self.connected = False
-        
-    async def handle_client(self, websocket):
-        """Handle a client connection"""
-        self.websocket = websocket
-        self.connected = True
-        print("\nConnected to SillyTavern!")
-        print("Type your messages below. Type 'exit' to quit.")
-        
-        try:
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    if data["type"] == "bot_response":
-                        print(f"\nBot: {data['content']}")
-                        print("\nYou: ", end="", flush=True)
-                except json.JSONDecodeError:
-                    print(f"\nError: Invalid message format")
-                except Exception as e:
-                    print(f"\nError handling message: {e}")
-        except websockets.exceptions.ConnectionClosed:
-            print("\nDisconnected from SillyTavern")
-        finally:
-            self.connected = False
-            self.websocket = None
-            
-    async def send_message(self, message):
-        """Send a message to SillyTavern"""
-        if not self.connected or not self.websocket:
-            print("\nNot connected to SillyTavern")
-            return False
-            
-        try:
-            await self.websocket.send(json.dumps({
-                "type": "send_message",
-                "content": message
-            }))
-            return True
-        except Exception as e:
-            print(f"\nError sending message: {e}")
-            return False
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
-async def main():
-    chat = SillyTavernChat()
-    print(f"\nStarting WebSocket server on port {chat.port}...")
-    
-    async with websockets.serve(chat.handle_client, "localhost", chat.port):
-        print(f"Server is running. Waiting for SillyTavern to connect...")
-        
-        while True:
-            try:
-                if chat.connected:
-                    message = await asyncio.get_event_loop().run_in_executor(None, lambda: input("\nYou: "))
-                    
-                    if message.lower() == "exit":
-                        break
-                        
-                    if message.strip():
-                        await chat.send_message(message)
-                else:
-                    await asyncio.sleep(1)  # Wait for connection
-                    
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                print(f"\nError: {e}")
-                if not chat.connected:
-                    await asyncio.sleep(1)  # Wait before retrying
+@app.route('/message', methods=['POST'])
+def receive_message():
+    try:
+        data = request.json
+        if data["type"] == "bot_response":
+            print(f"\nBot: {data['content']}")
+            print("\nYou: ", end="", flush=True)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"\nError processing message: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+def send_message_to_tavern(message):
+    try:
+        context = getContext()
+        context.sendMessage(message)
+        return True
+    except Exception as e:
+        print(f"\nError sending message: {e}")
+        return False
+
+def input_thread():
+    while True:
+        try:
+            message = input("\nYou: ")
+            
+            if message.lower() == "exit":
+                print("\nExiting...")
+                sys.exit(0)
+                
+            if message.strip():
+                print("Message sent!")
+                
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
+        except Exception as e:
+            print(f"\nError: {e}")
 
 if __name__ == "__main__":
     try:
         check_and_install_packages()
-        asyncio.run(main())
+        
+        # Start input thread
+        input_thread = threading.Thread(target=input_thread, daemon=True)
+        input_thread.start()
+        
+        # Start Flask server
+        print("\nStarting server on port 5001...")
+        app.run(host='localhost', port=5001)
+        
     except KeyboardInterrupt:
         print("\nChat ended by user")
     except Exception as e:
