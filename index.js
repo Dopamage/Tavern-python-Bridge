@@ -1,10 +1,10 @@
 // Python Bridge Extension for SillyTavern
-import { getContext, extension_settings, saveSettingsDebounced, eventSource, getApiUrl, extension_prompt_types, ModuleWorkerWrapper } from '../../../script.js';
-import { registerSlashCommand, executeSlashCommands } from '../../../slash-commands.js';
+import { getContext, extension_settings, saveSettingsDebounced, eventSource } from '../../../script.js';
 
-// Extension initialization
+// Register extension
 jQuery(async () => {
     const MODULE_NAME = 'Python Bridge';
+    const UPDATE_INTERVAL = 1000;
 
     // Default settings
     const defaultSettings = {
@@ -94,7 +94,7 @@ jQuery(async () => {
                 </div>
             </div>`;
 
-        $('#extensions_settings').append(settingsHtml);
+        $('#extensions_settings2').append(settingsHtml);
 
         // Event handlers
         $('#python_bridge_enabled').on('change', function() {
@@ -142,38 +142,11 @@ jQuery(async () => {
         }
     });
 
-    // Register slash command
-    registerSlashCommand('python-bridge', async (args) => {
-        try {
-            const enabled = args.length > 0 ? args[0].toLowerCase() === 'on' : !extension_settings.python_bridge.enabled;
-            extension_settings.python_bridge.enabled = enabled;
-            $('#python_bridge_enabled').prop('checked', enabled);
-            saveSettingsDebounced();
-            
-            if (enabled) {
-                await connectWebSocket();
-                return 'Python Bridge enabled - Connecting to Python server...';
-            } else {
-                if (ws) {
-                    ws.close();
-                    ws = null;
-                }
-                return 'Python Bridge disabled';
-            }
-        } catch (error) {
-            console.error('[Python Bridge] Command error:', error);
-            return 'Error executing command. Check console for details.';
-        }
-    }, [], 'Toggle Python Bridge extension', true, true);
-
     // Add the UI elements
     addExtensionControls();
 
-    console.log('[Python Bridge] Extension loaded');
+    // Initialize connection if enabled
     if (extension_settings.python_bridge.enabled) {
-        console.log('[Python Bridge] Extension is enabled, attempting connection...');
         await connectWebSocket();
-    } else {
-        console.log('[Python Bridge] Extension is disabled');
     }
 }); 
