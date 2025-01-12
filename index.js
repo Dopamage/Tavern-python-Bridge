@@ -2,6 +2,8 @@ import { getContext } from '../../../extensions.js';
 import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../extensions.js';
 import { eventSource } from '../../../extensions.js';
+import express from 'express';
+import cors from 'cors';
 
 // Default settings
 const defaultSettings = {
@@ -13,52 +15,42 @@ const defaultSettings = {
 extension_settings.python_bridge = extension_settings.python_bridge || {};
 Object.assign(extension_settings.python_bridge, defaultSettings);
 
-let ws = null;
-let wsServer = null;
+let app = null;
+let server = null;
 
-async function setupWebSocket() {
-    if (wsServer) {
-        wsServer.close();
+async function setupServer() {
+    if (server) {
+        server.close();
     }
 
-    // Create WebSocket server
-    wsServer = new WebSocket.Server({ port: extension_settings.python_bridge.port });
-    console.log(`[Python Bridge] WebSocket server started on port ${extension_settings.python_bridge.port}`);
+    app = express();
+    app.use(express.json());
+    app.use(cors());
 
-    wsServer.on('connection', (socket) => {
-        console.log('[Python Bridge] Client connected');
-        ws = socket;
-        $('#python_bridge_status').text('Connected').css('color', 'green');
+    // Endpoint to send a message to the chat
+    app.post('/send_message', async (req, res) => {
+        try {
+            const { content } = req.body;
+            const context = getContext();
+            await context.sendMessage(content);
+            res.json({ success: true });
+        } catch (error) {
+            console.error('[Python Bridge] Error sending message:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
 
-        socket.on('message', async (message) => {
-            try {
-                const data = JSON.parse(message);
-                if (data.type === 'send_message') {
-                    // Insert message into chat
-                    const context = getContext();
-                    await context.sendMessage(data.content);
-                }
-            } catch (error) {
-                console.error('[Python Bridge] Error processing message:', error);
-            }
-        });
-
-        socket.on('close', () => {
-            console.log('[Python Bridge] Client disconnected');
-            ws = null;
-            $('#python_bridge_status').text('Disconnected').css('color', 'red');
-        });
+    // Start server
+    server = app.listen(extension_settings.python_bridge.port, () => {
+        console.log(`[Python Bridge] REST API server started on port ${extension_settings.python_bridge.port}`);
+        $('#python_bridge_status').text('Running').css('color', 'green');
     });
 }
 
 // Listen for bot responses
 eventSource.on('message_received', (messageData) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'bot_response',
-            content: messageData.message
-        }));
-    }
+    // Store the latest message - it will be retrieved by the Python script
+    extension_settings.python_bridge.lastMessage = messageData.message;
 });
 
 // Add UI elements
@@ -74,7 +66,7 @@ jQuery(async () => {
                         <input type="checkbox" id="python_bridge_enabled" ${extension_settings.python_bridge.enabled ? 'checked' : ''}>
                         Enable Python Bridge
                     </label>
-                    <div>Status: <span id="python_bridge_status">Disconnected</span></div>
+                    <div>Status: <span id="python_bridge_status">Stopped</span></div>
                 </div>
             </div>
         </div>`;
@@ -87,19 +79,19 @@ jQuery(async () => {
         saveSettingsDebounced();
         
         if (extension_settings.python_bridge.enabled) {
-            setupWebSocket();
+            setupServer();
         } else {
-            if (wsServer) {
-                wsServer.close();
-                wsServer = null;
+            if (server) {
+                server.close();
+                server = null;
             }
             $('#python_bridge_status').text('Disabled').css('color', 'gray');
         }
     });
 
-    // Initialize WebSocket server if enabled
+    // Initialize server if enabled
     if (extension_settings.python_bridge.enabled) {
-        setupWebSocket();
+        setupServer();
     } else {
         $('#python_bridge_status').text('Disabled').css('color', 'gray');
     }

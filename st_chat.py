@@ -1,7 +1,7 @@
 import sys
 import subprocess
-import os
-import importlib.util
+import requests
+import time
 
 def install_package(package_name):
     print(f"Installing {package_name}...")
@@ -15,16 +15,12 @@ def install_package(package_name):
 
 def check_and_install_packages():
     print("Checking required packages...")
+    required_packages = ['requests']
     
-    # List of required packages with their import names
-    required_packages = {
-        'websockets': 'websockets',  # package name : import name
-    }
-    
-    # Check and install missing packages
-    for package, import_name in required_packages.items():
-        if importlib.util.find_spec(import_name) is None:
-            print(f"Package {package} is missing. Installing...")
+    for package in required_packages:
+        try:
+            __import__(package)
+        except ImportError:
             if not install_package(package):
                 print(f"Failed to install {package}. Please install it manually using:")
                 print(f"pip install {package}")
@@ -32,166 +28,50 @@ def check_and_install_packages():
     
     print("All required packages are installed!")
 
-# Run package check before imports
-if __name__ == "__main__":
-    check_and_install_packages()
-
-# Now import the required packages
-import asyncio
-import websockets
-import json
-from typing import Callable, Dict, List, Optional, Any
-
-class SillyTavernBridge:
+class SillyTavernChat:
     def __init__(self, port=5001):
-        self.port = port
-        self.websocket = None
-        self.running = False
-        self.message_callbacks: List[Callable[[str, str], None]] = []
-        self.response_callbacks: List[Callable[[str], None]] = []
-        self.error_callbacks: List[Callable[[str], None]] = []
-        self.connected_clients = set()
+        self.base_url = f"http://localhost:{port}"
         
-    def add_message_callback(self, callback: Callable[[str, str], None]):
-        """Add a callback for when messages are sent. Callback receives (author, message)"""
-        self.message_callbacks.append(callback)
-        
-    def add_response_callback(self, callback: Callable[[str], None]):
-        """Add a callback for when bot responds. Callback receives the response text"""
-        self.response_callbacks.append(callback)
-        
-    def add_error_callback(self, callback: Callable[[str], None]):
-        """Add a callback for error handling. Callback receives error message"""
-        self.error_callbacks.append(callback)
-        
-    def _handle_error(self, error_msg: str):
-        for callback in self.error_callbacks:
-            try:
-                callback(error_msg)
-            except Exception as e:
-                print(f"Error in error callback: {e}")
-                
-    async def handle_client(self, websocket, path):
+    def send_message(self, message):
+        """Send a message to SillyTavern"""
         try:
-            self.connected_clients.add(websocket)
-            print(f"Client connected from {websocket.remote_address}")
-            
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    if data["type"] == "bot_response":
-                        response = data["content"]
-                        # Notify callbacks
-                        for callback in self.response_callbacks:
-                            try:
-                                callback(response)
-                            except Exception as e:
-                                self._handle_error(f"Error in response callback: {e}")
-                        
-                        # Default console output
-                        print("\nBot:", response)
-                        print("\nYou: ", end="", flush=True)
-                except json.JSONDecodeError:
-                    self._handle_error(f"Invalid JSON received: {message}")
-                except Exception as e:
-                    self._handle_error(f"Error processing message: {e}")
-                    
-        except websockets.exceptions.ConnectionClosed:
-            print("Client disconnected")
-        finally:
-            self.connected_clients.remove(websocket)
-            
-    async def start_server(self):
-        try:
-            server = await websockets.serve(self.handle_client, "0.0.0.0", self.port)
-            print(f"WebSocket server started on port {self.port}")
-            self.running = True
-            await server.wait_closed()
-        except Exception as e:
-            error_msg = f"Failed to start server: {e}"
-            self._handle_error(error_msg)
-            print(f"Error details: {e}")
-            
-    async def send_message(self, message: str, author: str = "User"):
-        if not self.connected_clients:
-            print("No clients connected")
-            return False
-            
-        try:
-            # Notify callbacks
-            for callback in self.message_callbacks:
-                try:
-                    callback(author, message)
-                except Exception as e:
-                    self._handle_error(f"Error in message callback: {e}")
-            
-            # Send to all connected clients
-            data = json.dumps({
-                "type": "send_message",
-                "content": message
-            })
-            
-            await asyncio.gather(
-                *[client.send(data) for client in self.connected_clients]
+            response = requests.post(
+                f"{self.base_url}/send_message",
+                json={"content": message},
+                timeout=30
             )
+            response.raise_for_status()
             return True
-        except Exception as e:
-            error_msg = f"Failed to send message: {e}"
-            self._handle_error(error_msg)
+        except requests.exceptions.RequestException as e:
+            print(f"\nError sending message: {e}")
             return False
 
-class ConsoleChat:
-    def __init__(self, bridge: SillyTavernBridge):
-        self.bridge = bridge
-        
-    async def start_chat(self):
-        # Start the WebSocket server
-        server_task = asyncio.create_task(self.bridge.start_server())
-        
-        print("\nChat started! Type 'exit' to quit.")
-        print("You: ", end="", flush=True)
-        
-        while True:
-            try:
-                message = await asyncio.get_event_loop().run_in_executor(None, input)
-                
-                if message.lower() == "exit":
-                    break
-                    
-                if message.strip():
-                    await self.bridge.send_message(message)
-                    
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                print(f"\nError: {e}")
-                
-        self.bridge.running = False
-
-# Example usage with callbacks
-def example_message_callback(author: str, message: str):
-    print(f"Message callback: {author} said: {message}")
+def main():
+    chat = SillyTavernChat()
+    print("\nChat started! Type 'exit' to quit.")
     
-def example_response_callback(response: str):
-    print(f"Response callback: Got response: {response}")
-    
-def example_error_callback(error: str):
-    print(f"Error callback: {error}")
+    while True:
+        try:
+            message = input("\nYou: ")
             
-async def main():
-    # Create bridge with callbacks
-    bridge = SillyTavernBridge(port=5001)
-    bridge.add_message_callback(example_message_callback)
-    bridge.add_response_callback(example_response_callback)
-    bridge.add_error_callback(example_error_callback)
-    
-    # Create and start console chat
-    chat = ConsoleChat(bridge)
-    await chat.start_chat()
+            if message.lower() == "exit":
+                break
+                
+            if message.strip():
+                if chat.send_message(message):
+                    print("Message sent successfully!")
+                else:
+                    print("Failed to send message. Make sure SillyTavern is running and the extension is enabled.")
+                
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"\nError: {e}")
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        check_and_install_packages()
+        main()
     except KeyboardInterrupt:
         print("\nChat ended by user")
     except Exception as e:
