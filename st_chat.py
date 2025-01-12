@@ -1,7 +1,8 @@
 import sys
 import subprocess
-import requests
-import time
+import asyncio
+import json
+import websockets
 
 def install_package(package_name):
     print(f"Installing {package_name}...")
@@ -15,7 +16,7 @@ def install_package(package_name):
 
 def check_and_install_packages():
     print("Checking required packages...")
-    required_packages = ['requests']
+    required_packages = ['websockets']
     
     for package in required_packages:
         try:
@@ -30,36 +31,70 @@ def check_and_install_packages():
 
 class SillyTavernChat:
     def __init__(self, port=5001):
-        self.base_url = f"http://localhost:{port}"
+        self.port = port
+        self.websocket = None
         
-    def send_message(self, message):
-        """Send a message to SillyTavern"""
+    async def connect(self):
+        """Connect to SillyTavern WebSocket server"""
         try:
-            response = requests.post(
-                f"{self.base_url}/send_message",
-                json={"content": message},
-                timeout=30
-            )
-            response.raise_for_status()
+            self.websocket = await websockets.connect(f"ws://localhost:{self.port}")
             return True
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
+            print(f"\nError connecting: {e}")
+            return False
+            
+    async def send_message(self, message):
+        """Send a message to SillyTavern"""
+        if not self.websocket:
+            print("Not connected to SillyTavern")
+            return False
+            
+        try:
+            await self.websocket.send(json.dumps({
+                "type": "send_message",
+                "content": message
+            }))
+            return True
+        except Exception as e:
             print(f"\nError sending message: {e}")
             return False
+            
+    async def receive_messages(self):
+        """Receive messages from SillyTavern"""
+        try:
+            while True:
+                message = await self.websocket.recv()
+                data = json.loads(message)
+                if data["type"] == "bot_response":
+                    print(f"\nBot: {data['content']}")
+                    print("\nYou: ", end="", flush=True)
+        except Exception as e:
+            print(f"\nError receiving messages: {e}")
+            return False
 
-def main():
+async def main():
     chat = SillyTavernChat()
-    print("\nChat started! Type 'exit' to quit.")
+    print("\nConnecting to SillyTavern...")
+    
+    if not await chat.connect():
+        print("Failed to connect. Make sure SillyTavern is running and the extension is enabled.")
+        return
+        
+    print("Connected! Type 'exit' to quit.")
+    
+    # Start receiving messages in the background
+    receive_task = asyncio.create_task(chat.receive_messages())
     
     while True:
         try:
-            message = input("\nYou: ")
+            message = await asyncio.get_event_loop().run_in_executor(None, lambda: input("\nYou: "))
             
             if message.lower() == "exit":
                 break
                 
             if message.strip():
-                if chat.send_message(message):
-                    print("Message sent successfully!")
+                if await chat.send_message(message):
+                    pass  # Message sent successfully, wait for bot response
                 else:
                     print("Failed to send message. Make sure SillyTavern is running and the extension is enabled.")
                 
@@ -67,11 +102,16 @@ def main():
             break
         except Exception as e:
             print(f"\nError: {e}")
+            
+    # Clean up
+    receive_task.cancel()
+    if chat.websocket:
+        await chat.websocket.close()
 
 if __name__ == "__main__":
     try:
         check_and_install_packages()
-        main()
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("\nChat ended by user")
     except Exception as e:
