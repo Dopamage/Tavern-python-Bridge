@@ -33,20 +33,36 @@ class SillyTavernChat:
     def __init__(self, port=5001):
         self.port = port
         self.websocket = None
+        self.connected = False
         
-    async def connect(self):
-        """Connect to SillyTavern WebSocket server"""
+    async def handle_client(self, websocket):
+        """Handle a client connection"""
+        self.websocket = websocket
+        self.connected = True
+        print("\nConnected to SillyTavern!")
+        print("Type your messages below. Type 'exit' to quit.")
+        
         try:
-            self.websocket = await websockets.connect(f"ws://localhost:{self.port}")
-            return True
-        except Exception as e:
-            print(f"\nError connecting: {e}")
-            return False
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    if data["type"] == "bot_response":
+                        print(f"\nBot: {data['content']}")
+                        print("\nYou: ", end="", flush=True)
+                except json.JSONDecodeError:
+                    print(f"\nError: Invalid message format")
+                except Exception as e:
+                    print(f"\nError handling message: {e}")
+        except websockets.exceptions.ConnectionClosed:
+            print("\nDisconnected from SillyTavern")
+        finally:
+            self.connected = False
+            self.websocket = None
             
     async def send_message(self, message):
         """Send a message to SillyTavern"""
-        if not self.websocket:
-            print("Not connected to SillyTavern")
+        if not self.connected or not self.websocket:
+            print("\nNot connected to SillyTavern")
             return False
             
         try:
@@ -58,55 +74,33 @@ class SillyTavernChat:
         except Exception as e:
             print(f"\nError sending message: {e}")
             return False
-            
-    async def receive_messages(self):
-        """Receive messages from SillyTavern"""
-        try:
-            while True:
-                message = await self.websocket.recv()
-                data = json.loads(message)
-                if data["type"] == "bot_response":
-                    print(f"\nBot: {data['content']}")
-                    print("\nYou: ", end="", flush=True)
-        except Exception as e:
-            print(f"\nError receiving messages: {e}")
-            return False
 
 async def main():
     chat = SillyTavernChat()
-    print("\nConnecting to SillyTavern...")
+    print(f"\nStarting WebSocket server on port {chat.port}...")
     
-    if not await chat.connect():
-        print("Failed to connect. Make sure SillyTavern is running and the extension is enabled.")
-        return
+    async with websockets.serve(chat.handle_client, "localhost", chat.port):
+        print(f"Server is running. Waiting for SillyTavern to connect...")
         
-    print("Connected! Type 'exit' to quit.")
-    
-    # Start receiving messages in the background
-    receive_task = asyncio.create_task(chat.receive_messages())
-    
-    while True:
-        try:
-            message = await asyncio.get_event_loop().run_in_executor(None, lambda: input("\nYou: "))
-            
-            if message.lower() == "exit":
-                break
-                
-            if message.strip():
-                if await chat.send_message(message):
-                    pass  # Message sent successfully, wait for bot response
+        while True:
+            try:
+                if chat.connected:
+                    message = await asyncio.get_event_loop().run_in_executor(None, lambda: input("\nYou: "))
+                    
+                    if message.lower() == "exit":
+                        break
+                        
+                    if message.strip():
+                        await chat.send_message(message)
                 else:
-                    print("Failed to send message. Make sure SillyTavern is running and the extension is enabled.")
-                
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            print(f"\nError: {e}")
-            
-    # Clean up
-    receive_task.cancel()
-    if chat.websocket:
-        await chat.websocket.close()
+                    await asyncio.sleep(1)  # Wait for connection
+                    
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                print(f"\nError: {e}")
+                if not chat.connected:
+                    await asyncio.sleep(1)  # Wait before retrying
 
 if __name__ == "__main__":
     try:
