@@ -1,7 +1,4 @@
-import { getContext } from '../../../extensions.js';
-import { extension_settings } from '../../../extensions.js';
-import { saveSettingsDebounced } from '../../../extensions.js';
-import { eventSource } from '../../../extensions.js';
+import { getContext, extension_settings, saveSettingsDebounced } from '../../../script.js';
 import { registerSlashCommand } from '../../../slash-commands.js';
 
 // Default settings
@@ -44,45 +41,53 @@ function setupSocket() {
         socket.close();
     }
 
-    socket = new WebSocket(`ws://localhost:${extension_settings.python_bridge.port}`);
+    try {
+        socket = new WebSocket(`ws://localhost:${extension_settings.python_bridge.port}`);
 
-    socket.onopen = () => {
-        console.log('[Python Bridge] Connected to Python script');
-        $('#python_bridge_status').text('Connected').css('color', 'green');
-        addToLog('Connected to Python script', 'info');
-    };
+        socket.onopen = () => {
+            console.log('[Python Bridge] Connected to Python script');
+            $('#python_bridge_status').text('Connected').css('color', 'green');
+            addToLog('Connected to Python script', 'info');
+        };
 
-    socket.onclose = () => {
-        console.log('[Python Bridge] Disconnected from Python script');
-        $('#python_bridge_status').text('Disconnected').css('color', 'red');
-        addToLog('Disconnected from Python script', 'error');
-        // Try to reconnect after a delay
-        setTimeout(setupSocket, 5000);
-    };
-
-    socket.onmessage = async (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'send_message') {
-                const context = getContext();
-                addToLog(`Message from Python: ${data.content}`, 'received');
-                await context.sendMessage(data.content);
+        socket.onclose = () => {
+            console.log('[Python Bridge] Disconnected from Python script');
+            $('#python_bridge_status').text('Disconnected').css('color', 'red');
+            addToLog('Disconnected from Python script', 'error');
+            // Try to reconnect after a delay if enabled
+            if (extension_settings.python_bridge.enabled) {
+                setTimeout(setupSocket, 5000);
             }
-        } catch (error) {
-            console.error('[Python Bridge] Error processing message:', error);
-            addToLog(`Error processing message: ${error.message}`, 'error');
-        }
-    };
+        };
 
-    socket.onerror = (error) => {
-        console.error('[Python Bridge] WebSocket error:', error);
-        addToLog(`WebSocket error: ${error.message}`, 'error');
-    };
+        socket.onmessage = async (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'send_message') {
+                    const context = getContext();
+                    addToLog(`Message from Python: ${data.content}`, 'received');
+                    await context.sendMessage(data.content);
+                }
+            } catch (error) {
+                console.error('[Python Bridge] Error processing message:', error);
+                addToLog(`Error processing message: ${error.message}`, 'error');
+            }
+        };
+
+        socket.onerror = (error) => {
+            console.error('[Python Bridge] WebSocket error:', error);
+            addToLog(`WebSocket error: ${error.message}`, 'error');
+        };
+    } catch (error) {
+        console.error('[Python Bridge] Setup error:', error);
+        addToLog(`Setup error: ${error.message}`, 'error');
+    }
 }
 
-// Listen for bot responses
-eventSource.on('message_received', (messageData) => {
+// Listen for bot responses using event listener
+document.addEventListener('message_received', (event) => {
     if (socket && socket.readyState === WebSocket.OPEN) {
+        const messageData = event.detail;
         socket.send(JSON.stringify({
             type: 'bot_response',
             content: messageData.message
