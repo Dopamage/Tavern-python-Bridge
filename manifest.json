@@ -1,10 +1,13 @@
 {
     "display_name": "Python Bridge",
-    "loading_order": 100,
+    "loading_order": 1,
     "requires": [],
     "js": "index.js",
     "css": "",
     "author": "Assistant",
     "version": "1.0.0",
-    "homePage": ""
+    "auto_update": false,
+    "extension_api_version": 1,
+    "optional": false,
+    "allow_hot_reload": true
 } 
