@@ -1,0 +1,15 @@
+{
+    "display_name": "Tavern-python-Bridge",
+    "loading_order": 10,
+    "requires": [],
+    "js": "index.js",
+    "css": "",
+    "author": "Yaki",
+    "version": "1.0.0",
+    "homePage": "https://github.com/Dopamage/Tavern-python-Bridge",
+    "auto_update": false,
+    "extension_api_version": 1,
+    "optional": true,
+    "allow_hot_reload": true,
+    "description": "Enables bidirectional communication between Python programs and SillyTavern chat"
+} 
