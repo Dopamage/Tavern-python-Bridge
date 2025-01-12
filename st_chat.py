@@ -66,13 +66,14 @@ class SillyTavernBridge:
             
     async def start_server(self):
         try:
-            server = await websockets.serve(self.handle_client, "localhost", self.port)
+            server = await websockets.serve(self.handle_client, "0.0.0.0", self.port)
             print(f"WebSocket server started on port {self.port}")
             self.running = True
             await server.wait_closed()
         except Exception as e:
             error_msg = f"Failed to start server: {e}"
             self._handle_error(error_msg)
+            print(f"Error details: {e}")
             
     async def send_message(self, message: str, author: str = "User"):
         if not self.connected_clients:
