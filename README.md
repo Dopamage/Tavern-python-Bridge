@@ -27,4 +27,4 @@ That's it! Type messages in the Python console and they'll show up in SillyTaver
 
 Check out `st_chat.py` - you can import the bridge class and use it in your own code.
 
-Made by Yaki 🐍
+Made by Dope 🐍
